@@ -1,43 +1,41 @@
 package org.jetbrains.plugins.ideaConfigurationServer;
 
-import java.awt.BorderLayout;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.io.File;
-import java.io.IOException;
 import java.util.concurrent.Callable;
 
 import javax.swing.Action;
-import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
 import javax.swing.JPanel;
 import javax.swing.JTextField;
-import javax.swing.event.DocumentEvent;
 
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.application.impl.ApplicationImpl;
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.Task;
+import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.util.ActionCallback;
 import com.intellij.openapi.util.text.StringUtil;
-import com.intellij.openapi.vfs.StandardFileSystems;
-import com.intellij.ui.DocumentAdapter;
-import com.intellij.util.Consumer;
-import com.intellij.util.io.URLUtil;
+import com.intellij.util.Restarter;
+import lombok.val;
 
 @SuppressWarnings("DialogTitleCapitalization")
 public class IcsSettingsPanel extends DialogWrapper
 {
+	@Nullable
+	private final Project myProject;
 	private JPanel panel;
 	private JTextField urlTextField;
 	private JCheckBox updateRepositoryFromRemoteCheckBox;
 	private JCheckBox shareProjectWorkspaceCheckBox;
-	private final JButton syncButton;
 
-	public IcsSettingsPanel()
+	public IcsSettingsPanel(@Nullable Project project)
 	{
 		super(true);
+		myProject = project;
 
 		IcsManager icsManager = IcsManager.getInstance();
 		IcsSettings settings = icsManager.getSettings();
@@ -46,58 +44,9 @@ public class IcsSettingsPanel extends DialogWrapper
 		shareProjectWorkspaceCheckBox.setSelected(settings.shareProjectWorkspace);
 		urlTextField.setText(icsManager.getRepositoryManager().getRemoteRepositoryUrl());
 
-		// todo TextComponentUndoProvider should not depends on app settings
-		//new TextComponentUndoProvider(urlTextField);
-
-		syncButton = new JButton(IcsBundle.message("settings.panel.syncNow"));
-		syncButton.addActionListener(new ActionListener()
-		{
-			@Override
-			public void actionPerformed(ActionEvent e)
-			{
-				if(!saveRemoteRepositoryUrl())
-				{
-					return;
-				}
-
-				IcsManager.getInstance().sync().doWhenDone(new Runnable()
-				{
-					@Override
-					public void run()
-					{
-						Messages.showInfoMessage(getContentPane(), IcsBundle.message("sync.done.message"), IcsBundle.message("sync.done.title"));
-					}
-				}).doWhenRejected(new Consumer<String>()
-				{
-					@Override
-					public void consume(String error)
-					{
-						Messages.showErrorDialog(getContentPane(), IcsBundle.message("sync.rejected.message", StringUtil.notNullize(error,
-								"Internal error")), IcsBundle.message("sync.rejected.title"));
-					}
-				});
-			}
-		});
-		updateSyncButtonState();
-
-		urlTextField.getDocument().addDocumentListener(new DocumentAdapter()
-		{
-			@Override
-			protected void textChanged(DocumentEvent e)
-			{
-				updateSyncButtonState();
-			}
-		});
-
 		setTitle(IcsBundle.message("settings.panel.title"));
-		setResizable(false);
+		pack();
 		init();
-	}
-
-	private void updateSyncButtonState()
-	{
-		String url = urlTextField.getText();
-		syncButton.setEnabled(!StringUtil.isEmptyOrSpaces(url) && url.length() > 1);
 	}
 
 	@Nullable
@@ -118,7 +67,7 @@ public class IcsSettingsPanel extends DialogWrapper
 	@Override
 	protected Action[] createActions()
 	{
-		return new Action[]{getOKAction()};
+		return new Action[]{getOKAction(), getCancelAction()};
 	}
 
 	@Override
@@ -126,16 +75,6 @@ public class IcsSettingsPanel extends DialogWrapper
 	{
 		apply();
 		super.doOKAction();
-	}
-
-	@Nullable
-	@Override
-	protected JComponent createSouthPanel()
-	{
-		JComponent southPanel = super.createSouthPanel();
-		assert southPanel != null;
-		southPanel.add(syncButton, BorderLayout.WEST);
-		return southPanel;
 	}
 
 	private void apply()
@@ -158,52 +97,63 @@ public class IcsSettingsPanel extends DialogWrapper
 
 	private boolean saveRemoteRepositoryUrl()
 	{
-		String url = StringUtil.nullize(urlTextField.getText());
+		val icsManager = IcsManager.getInstance();
+		val repositoryManager = icsManager.getRepositoryManager();
+		val url = StringUtil.nullize(urlTextField.getText());
 		if(url != null)
 		{
-			boolean isFile;
-			if(url.startsWith(StandardFileSystems.FILE_PROTOCOL_PREFIX))
+			val i = Messages.showYesNoCancelDialog("Choose initial options for sync. If you what use empty repository, click 'Init', " +
+					"if not 'Clone and Restart'", "Configuration Repository", "Init", "Clone and Restart", "Discard", Messages.getQuestionIcon());
+
+			if(i == Messages.CANCEL)
 			{
-				url = url.substring(StandardFileSystems.FILE_PROTOCOL_PREFIX.length());
-				isFile = true;
+				return false;
 			}
 			else
 			{
-				isFile = !URLUtil.containsScheme(url);
-			}
+				new Task.Backgroundable(myProject, "Preparing")
+				{
+					@Override
+					public void run(@NotNull ProgressIndicator progressIndicator)
+					{
+						val callback = new ActionCallback();
 
-			if(isFile)
-			{
-				File file = new File(url);
-				if(file.exists())
-				{
-					if(!file.isDirectory())
-					{
-						Messages.showErrorDialog(getContentPane(), "Specified path is not a directory", "Specified path is invalid");
-						return false;
+						if(i == Messages.YES)
+						{
+							repositoryManager.initLocal(url, progressIndicator).notify(callback);
+						}
+						else
+						{
+							ActionCallback actionCallback = repositoryManager.cloneFromRemote(url, progressIndicator);
+							actionCallback.notify(callback).doWhenDone(new Runnable()
+							{
+								@Override
+								public void run()
+								{
+									icsManager.setStatus(IcsStatus.OPEN_FAILED);
+									if(Restarter.isSupported())
+									{
+										final ApplicationImpl app = (ApplicationImpl) ApplicationManager.getApplication();
+										app.restart(true);
+									}
+									else
+									{
+										Messages.showInfoMessage(myProject, "Auto-restart is not supported. Please restart Consulo", "Information");
+									}
+								}
+							});
+						}
+
+						callback.waitFor(-1);
 					}
-				}
-				else if(Messages.showYesNoDialog(getContentPane(), IcsBundle.message("init.dialog.message"), IcsBundle.message("init.dialog.title"),
-						Messages.getQuestionIcon()) == 0)
-				{
-					try
-					{
-						IcsManager.getInstance().getRepositoryManager().initRepository(file);
-					}
-					catch(IOException e)
-					{
-						Messages.showErrorDialog(getContentPane(), IcsBundle.message("init.failed.message", e.getMessage()),
-								IcsBundle.message("init.failed.title"));
-						return false;
-					}
-				}
-				else
-				{
-					return false;
-				}
+				}.queue();
 			}
 		}
-		IcsManager.getInstance().getRepositoryManager().setRemoteRepositoryUrl(url);
-		return true;
+		else
+		{
+			repositoryManager.drop();
+			icsManager.setStatus(IcsStatus.OPEN_FAILED);
+		}
+		return url != null;
 	}
 }

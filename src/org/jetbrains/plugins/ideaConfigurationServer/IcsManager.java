@@ -13,7 +13,7 @@ import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.application.ModalityState;
 import com.intellij.openapi.application.PathManager;
-import com.intellij.openapi.application.impl.ApplicationImpl;
+import com.intellij.openapi.application.ex.ApplicationEx2;
 import com.intellij.openapi.components.RoamingType;
 import com.intellij.openapi.components.StateStorage;
 import com.intellij.openapi.components.StoragePathMacros;
@@ -40,9 +40,9 @@ public class IcsManager implements ApplicationLoadListener, Disposable
 
 	private final IcsSettings settings = new IcsSettings();
 
-	private RepositoryManager repositoryManager;
+	private final RepositoryManager myRepositoryManager = new GitRepositoryManager();
 
-	private IcsStatus status;
+	private IcsStatus myStatus;
 
 	protected final SingleAlarm commitAlarm = new SingleAlarm(new Runnable()
 	{
@@ -54,7 +54,7 @@ public class IcsManager implements ApplicationLoadListener, Disposable
 				@Override
 				public void run(@NotNull ProgressIndicator indicator)
 				{
-					awaitCallback(indicator, repositoryManager.commit(), getTitle());
+					awaitCallback(indicator, myRepositoryManager.commit(), getTitle());
 				}
 			});
 		}
@@ -95,14 +95,14 @@ public class IcsManager implements ApplicationLoadListener, Disposable
 
 	public IcsStatus getStatus()
 	{
-		return status;
+		return myStatus;
 	}
 
 	public void setStatus(@NotNull IcsStatus value)
 	{
-		if(status != value)
+		if(myStatus != value)
 		{
-			status = value;
+			myStatus = value;
 			ApplicationManager.getApplication().getMessageBus().syncPublisher(StatusListener.TOPIC).statusChanged(value);
 		}
 	}
@@ -126,17 +126,17 @@ public class IcsManager implements ApplicationLoadListener, Disposable
 			@Override
 			public Collection<String> listSubFiles(@NotNull String fileSpec, @NotNull RoamingType roamingType)
 			{
-				return repositoryManager.listSubFileNames(IcsUrlBuilder.buildPath(fileSpec, roamingType, null));
+				return myRepositoryManager.listSubFileNames(IcsUrlBuilder.buildPath(fileSpec, roamingType, null));
 			}
 
 			@Override
 			public void deleteFile(@NotNull String fileSpec, @NotNull RoamingType roamingType)
 			{
-				repositoryManager.deleteAsync(IcsUrlBuilder.buildPath(fileSpec, roamingType, null));
+				myRepositoryManager.deleteAsync(IcsUrlBuilder.buildPath(fileSpec, roamingType, null));
 				commitAlarm.cancelAndRequest();
 			}
 		};
-		StateStorageManager storageManager = ((ApplicationImpl) application).getStateStore().getStateStorageManager();
+		StateStorageManager storageManager = ((ApplicationEx2) application).getStateStore().getStateStorageManager();
 		storageManager.setStreamProvider(streamProvider);
 
 		Collection<String> storageFileNames = storageManager.getStorageFileNames();
@@ -176,7 +176,7 @@ public class IcsManager implements ApplicationLoadListener, Disposable
 				if(StorageUtil.isProjectOrModuleFile(fileSpec))
 				{
 					// applicable only if file was committed to Settings Server explicitly
-					return repositoryManager.has(IcsUrlBuilder.buildPath(fileSpec, roamingType, projectId));
+					return myRepositoryManager.has(IcsUrlBuilder.buildPath(fileSpec, roamingType, projectId));
 				}
 
 				return settings.shareProjectWorkspace || !fileSpec.equals(StoragePathMacros.WORKSPACE_FILE);
@@ -188,25 +188,10 @@ public class IcsManager implements ApplicationLoadListener, Disposable
 
 	private void connectAndUpdateRepository()
 	{
-		try
+		setStatus(myRepositoryManager.isValid() ? IcsStatus.OPENED : IcsStatus.OPEN_FAILED);
+		if(myStatus == IcsStatus.OPENED && settings.updateOnStart)
 		{
-			repositoryManager = new GitRepositoryManager();
-			setStatus(IcsStatus.OPENED);
-			if(settings.updateOnStart)
-			{
-				repositoryManager.updateRepository();
-			}
-		}
-		catch(IOException e)
-		{
-			try
-			{
-				LOG.error(e);
-			}
-			finally
-			{
-				setStatus(getStatus() == IcsStatus.OPENED ? IcsStatus.UPDATE_FAILED : IcsStatus.OPEN_FAILED);
-			}
+			myRepositoryManager.updateRepository();
 		}
 	}
 
@@ -217,12 +202,12 @@ public class IcsManager implements ApplicationLoadListener, Disposable
 
 	public RepositoryManager getRepositoryManager()
 	{
-		return repositoryManager;
+		return myRepositoryManager;
 	}
 
 	public String getStatusText()
 	{
-		switch(status)
+		switch(myStatus)
 		{
 			case OPEN_FAILED:
 				return "Open repository failed";
@@ -279,9 +264,9 @@ public class IcsManager implements ApplicationLoadListener, Disposable
 				}, ModalityState.any());
 				commitAlarm.cancel();
 
-				repositoryManager.commit().notify(actionCallback);
-				repositoryManager.pull(indicator).notify(actionCallback);
-				ActionCallback lastActionCallback = repositoryManager.push(indicator).notify(actionCallback);
+				myRepositoryManager.commit().notify(actionCallback);
+				myRepositoryManager.pull(indicator).notify(actionCallback);
+				ActionCallback lastActionCallback = myRepositoryManager.push(indicator).notify(actionCallback);
 				awaitCallback(indicator, lastActionCallback, getTitle());
 			}
 		});
@@ -301,7 +286,7 @@ public class IcsManager implements ApplicationLoadListener, Disposable
 		public final boolean saveContent(@NotNull String fileSpec, @NotNull byte[] content, int size, @NotNull RoamingType roamingType,
 				boolean async)
 		{
-			repositoryManager.write(IcsUrlBuilder.buildPath(fileSpec, roamingType, projectId), content, size, async);
+			myRepositoryManager.write(IcsUrlBuilder.buildPath(fileSpec, roamingType, projectId), content, size, async);
 			if(isAutoCommit(fileSpec, roamingType))
 			{
 				commitAlarm.cancelAndRequest();
@@ -318,13 +303,13 @@ public class IcsManager implements ApplicationLoadListener, Disposable
 		@Nullable
 		public InputStream loadContent(@NotNull String fileSpec, @NotNull RoamingType roamingType) throws IOException
 		{
-			return repositoryManager.read(IcsUrlBuilder.buildPath(fileSpec, roamingType, projectId));
+			return myRepositoryManager.read(IcsUrlBuilder.buildPath(fileSpec, roamingType, projectId));
 		}
 
 		@Override
 		public boolean isEnabled()
 		{
-			return status == IcsStatus.OPENED;
+			return myStatus == IcsStatus.OPENED;
 		}
 
 		@Override

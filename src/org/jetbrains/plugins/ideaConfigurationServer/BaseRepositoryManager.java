@@ -26,8 +26,7 @@ public abstract class BaseRepositoryManager implements RepositoryManager
 
 	protected final File dir;
 
-	protected final QueueProcessor<ThrowableRunnable<Exception>> taskProcessor = new QueueProcessor<ThrowableRunnable<Exception>>(new
-																																		  Consumer<ThrowableRunnable<Exception>>()
+	protected final QueueProcessor<ThrowableRunnable<Exception>> taskProcessor = new QueueProcessor<ThrowableRunnable<Exception>>(new Consumer<ThrowableRunnable<Exception>>()
 	{
 		@Override
 		public void consume(ThrowableRunnable<Exception> task)

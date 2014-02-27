@@ -1,6 +1,5 @@
 package org.jetbrains.plugins.ideaConfigurationServer;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collection;
@@ -16,7 +15,9 @@ public interface RepositoryManager
 	@Nullable
 	String getRemoteRepositoryUrl();
 
-	void setRemoteRepositoryUrl(@Nullable String url);
+	ActionCallback cloneFromRemote(String url, ProgressIndicator progressIndicator);
+
+	ActionCallback initLocal(String url, ProgressIndicator progressIndicator);
 
 	@Nullable
 	InputStream read(@NotNull String path) throws IOException;
@@ -44,7 +45,9 @@ public interface RepositoryManager
 	@NotNull
 	ActionCallback pull(@NotNull ProgressIndicator indicator);
 
-	void initRepository(@NotNull File dir) throws IOException;
-
 	boolean has(String path);
+
+	void drop();
+
+	boolean isValid();
 }

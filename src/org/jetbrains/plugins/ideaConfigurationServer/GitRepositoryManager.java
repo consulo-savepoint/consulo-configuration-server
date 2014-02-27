@@ -23,7 +23,6 @@ import org.eclipse.jgit.lib.IndexDiff;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.ProgressMonitor;
 import org.eclipse.jgit.lib.RefUpdate;
-import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.lib.StoredConfig;
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.eclipse.jgit.transport.CredentialItem;
@@ -46,37 +45,111 @@ import com.intellij.util.ThrowableConsumer;
 import com.intellij.util.ThrowableRunnable;
 import com.intellij.util.io.IOUtil;
 import com.intellij.util.ui.UIUtil;
+import lombok.val;
 
-final class GitRepositoryManager extends BaseRepositoryManager
+public final class GitRepositoryManager extends BaseRepositoryManager
 {
-	private final Git git;
+	private Git myGitWrapper;
 
 	private CredentialsProvider credentialsProvider;
 
-	public GitRepositoryManager() throws IOException
+	public GitRepositoryManager()
 	{
-		FileRepositoryBuilder repositoryBuilder = new FileRepositoryBuilder();
-		repositoryBuilder.setGitDir(new File(dir, Constants.DOT_GIT));
-		Repository repository = repositoryBuilder.build();
-		if(!dir.exists())
-		{
-			repository.create(false);
-			disableAutoCrLf(repository);
-		}
-		git = Git.wrap(repository);
 	}
 
-	private static void disableAutoCrLf(Repository repository) throws IOException
+	private Git getGit()
 	{
-		StoredConfig config = repository.getConfig();
-		config.setString(ConfigConstants.CONFIG_CORE_SECTION, null, ConfigConstants.CONFIG_KEY_AUTOCRLF, ConfigConstants.CONFIG_KEY_FALSE);
-		config.save();
+		if(!dir.exists() || !new File(dir, ".git").exists())
+		{
+			return null;
+		}
+
+		try
+		{
+			myGitWrapper = Git.open(dir);
+		}
+		catch(IOException e)
+		{
+		}
+		return myGitWrapper;
 	}
 
 	@Override
-	public void initRepository(@NotNull File dir) throws IOException
+	public boolean isValid()
 	{
-		new FileRepositoryBuilder().setBare().setGitDir(dir).build().create(true);
+		return getGit() != null;
+	}
+
+	@Override
+	public ActionCallback initLocal(@NotNull final String url, @NotNull ProgressIndicator progressIndicator)
+	{
+		myGitWrapper = null;
+		return execute(new ThrowableConsumer<ProgressIndicator, Exception>()
+		{
+			@Override
+			public void consume(ProgressIndicator progressIndicator) throws Exception
+			{
+				if(dir.exists())
+				{
+					FileUtil.delete(dir);
+				}
+
+				new FileRepositoryBuilder().setBare().setGitDir(dir).build().create(true);
+
+				Git git = getGit();
+
+				assert git != null;
+
+				StoredConfig config = git.getRepository().getConfig();
+				if(StringUtil.isEmptyOrSpaces(url))
+				{
+					config.unset(ConfigConstants.CONFIG_REMOTE_SECTION, Constants.DEFAULT_REMOTE_NAME, ConfigConstants.CONFIG_KEY_URL);
+				}
+				else
+				{
+					config.setString(ConfigConstants.CONFIG_REMOTE_SECTION, Constants.DEFAULT_REMOTE_NAME, ConfigConstants.CONFIG_KEY_URL, url);
+					config.setString(ConfigConstants.CONFIG_REMOTE_SECTION, Constants.DEFAULT_REMOTE_NAME, "fetch",
+							"+refs/heads/*:refs/remotes/origin/*");
+					config.setString(ConfigConstants.CONFIG_CORE_SECTION, null, ConfigConstants.CONFIG_KEY_AUTOCRLF,
+							ConfigConstants.CONFIG_KEY_FALSE);
+					config.setString(ConfigConstants.CONFIG_BRANCH_SECTION, Constants.MASTER, ConfigConstants.CONFIG_KEY_REMOTE,
+							Constants.DEFAULT_REMOTE_NAME);
+					config.setString(ConfigConstants.CONFIG_BRANCH_SECTION, Constants.MASTER, ConfigConstants.CONFIG_KEY_MERGE, "refs/heads/master");
+				}
+
+				try
+				{
+					config.save();
+					IcsManager.getInstance().setStatus(IcsStatus.OPENED);
+				}
+				catch(IOException e)
+				{
+					LOG.error(e);
+				}
+			}
+		}, progressIndicator);
+	}
+
+	@Override
+	public ActionCallback cloneFromRemote(final String url, ProgressIndicator progressIndicator)
+	{
+		myGitWrapper = null;
+		return execute(new ThrowableConsumer<ProgressIndicator, Exception>()
+		{
+			@Override
+			public void consume(ProgressIndicator progressIndicator) throws Exception
+			{
+				if(dir.exists())
+				{
+					FileUtil.delete(dir);
+				}
+
+				progressIndicator.setText("Cloning");
+				progressIndicator.setIndeterminate(true);
+				Git.cloneRepository().setDirectory(dir).setURI(url)
+						.setCredentialsProvider(getCredentialsProvider()).call();
+			}
+		}, progressIndicator);
 	}
 
 	private CredentialsProvider getCredentialsProvider()
@@ -92,59 +165,58 @@ final class GitRepositoryManager extends BaseRepositoryManager
 	@Override
 	public String getRemoteRepositoryUrl()
 	{
+		Git git = getGit();
+		if(git == null)
+		{
+			return null;
+		}
 		return StringUtil.nullize(git.getRepository().getConfig().getString(ConfigConstants.CONFIG_REMOTE_SECTION, Constants.DEFAULT_REMOTE_NAME,
 				ConfigConstants.CONFIG_KEY_URL));
 	}
 
 	@Override
-	public void setRemoteRepositoryUrl(@Nullable String url)
-	{
-		StoredConfig config = git.getRepository().getConfig();
-		if(StringUtil.isEmptyOrSpaces(url))
-		{
-			config.unset(ConfigConstants.CONFIG_REMOTE_SECTION, Constants.DEFAULT_REMOTE_NAME, ConfigConstants.CONFIG_KEY_URL);
-		}
-		else
-		{
-			config.setString(ConfigConstants.CONFIG_REMOTE_SECTION, Constants.DEFAULT_REMOTE_NAME, ConfigConstants.CONFIG_KEY_URL, url);
-			config.setString(ConfigConstants.CONFIG_REMOTE_SECTION, Constants.DEFAULT_REMOTE_NAME, "fetch", "+refs/heads/*:refs/remotes/origin/*");
-
-			config.setString(ConfigConstants.CONFIG_BRANCH_SECTION, Constants.MASTER, ConfigConstants.CONFIG_KEY_REMOTE,
-					Constants.DEFAULT_REMOTE_NAME);
-			config.setString(ConfigConstants.CONFIG_BRANCH_SECTION, Constants.MASTER, ConfigConstants.CONFIG_KEY_MERGE, "refs/heads/master");
-		}
-
-		try
-		{
-			config.save();
-		}
-		catch(IOException e)
-		{
-			LOG.error(e);
-		}
-	}
-
-	@Override
 	protected void doUpdateRepository() throws Exception
 	{
+		Git git = getGit();
+		if(git == null)
+		{
+			return;
+		}
 		git.fetch().setRemoveDeletedRefs(true).setCredentialsProvider(getCredentialsProvider()).call();
 	}
 
 	@Override
 	protected boolean hasRemoteRepository()
 	{
+		Git git = getGit();
+		if(git == null)
+		{
+			return false;
+		}
 		return !StringUtil.isEmptyOrSpaces(git.getRepository().getConfig().getString("remote", "origin", "url"));
 	}
 
 	@Override
 	protected void doAdd(String path) throws Exception
 	{
+		Git git = getGit();
+		if(git == null)
+		{
+			return;
+		}
+
 		git.add().addFilepattern(path).call();
 	}
 
 	@Override
 	protected void doDelete(@NotNull String path) throws GitAPIException
 	{
+		Git git = getGit();
+		if(git == null)
+		{
+			return;
+		}
+
 		git.rm().addFilepattern(path).call();
 	}
 
@@ -152,6 +224,12 @@ final class GitRepositoryManager extends BaseRepositoryManager
 	@Override
 	public ActionCallback commit()
 	{
+		val git = getGit();
+		if(git == null)
+		{
+			return ActionCallback.REJECTED;
+		}
+
 		return execute(new ThrowableConsumer<ProgressIndicator, Exception>()
 		{
 			@Override
@@ -201,6 +279,12 @@ final class GitRepositoryManager extends BaseRepositoryManager
 	@NotNull
 	public ActionCallback push(@NotNull final ProgressIndicator indicator)
 	{
+		val git = getGit();
+		if(git == null)
+		{
+			return ActionCallback.REJECTED;
+		}
+
 		return execute(new ThrowableConsumer<ProgressIndicator, Exception>()
 		{
 			@Override
@@ -215,6 +299,12 @@ final class GitRepositoryManager extends BaseRepositoryManager
 	@NotNull
 	public ActionCallback pull(@NotNull final ProgressIndicator indicator)
 	{
+		val git = getGit();
+		if(git == null)
+		{
+			return ActionCallback.REJECTED;
+		}
+
 		return execute(new ThrowableConsumer<ProgressIndicator, Exception>()
 		{
 			@Override
@@ -305,6 +395,12 @@ final class GitRepositoryManager extends BaseRepositoryManager
 				while(!result.getStatus().isSuccessful());
 			}
 		}, indicator);
+	}
+
+	@Override
+	public void drop()
+	{
+		FileUtil.delete(dir);
 	}
 
 	private static class JGitProgressMonitor implements ProgressMonitor

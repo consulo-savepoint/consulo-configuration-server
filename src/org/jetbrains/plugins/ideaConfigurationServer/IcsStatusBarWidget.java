@@ -81,7 +81,7 @@ public class IcsStatusBarWidget implements StatusBarWidget, StatusBarWidget.Icon
 			@Override
 			public void consume(MouseEvent event)
 			{
-				new IcsSettingsPanel().show();
+				new IcsSettingsPanel(null).show();
 			}
 		};
 	}
