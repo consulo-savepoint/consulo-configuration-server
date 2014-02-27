@@ -1,0 +1,18 @@
+<component name="ArtifactManager">
+  <artifact name="dist">
+    <output-path>$PROJECT_DIR$/out/artifacts/dist</output-path>
+    <root id="root">
+      <element id="directory" name="idea-configuration-server">
+        <element id="directory" name="lib">
+          <element id="zip-archive" name="idea-configuration-server.jar">
+            <element id="module-output" name="consulo-configuration-server" />
+            <element id="module-production-resource-output" name="consulo-configuration-server" />
+          </element>
+          <element id="file-copy" path="$PROJECT_DIR$/lib/org.eclipse.jgit-3.0.3.201309161630-r.jar" />
+          <element id="file-copy" path="$PROJECT_DIR$/lib/org.eclipse.jgit-3.0.3.201309161630-r-sources.jar" />
+          <element id="file-copy" path="$PROJECT_DIR$/lib/jsch-0.1.50.jar" />
+        </element>
+      </element>
+    </root>
+  </artifact>
+</component>
