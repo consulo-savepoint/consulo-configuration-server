@@ -175,7 +175,7 @@ final class GitRepositoryManager extends BaseRepositoryManager {
     return execute(new ThrowableConsumer<ProgressIndicator, Exception>() {
       @Override
       public void consume(ProgressIndicator indicator) throws Exception {
-        git.push().setForce(true).setProgressMonitor(new JGitProgressMonitor(indicator)).setCredentialsProvider(getCredentialsProvider()).call();
+        git.push().setProgressMonitor(new JGitProgressMonitor(indicator)).setCredentialsProvider(getCredentialsProvider()).call();
       }
     }, indicator);
   }
