@@ -1,43 +1,49 @@
 package org.jetbrains.plugins.ideaConfigurationServer;
 
-import com.intellij.openapi.ui.DialogWrapper;
-import com.intellij.util.net.AuthenticationPanel;
+import javax.swing.JComponent;
+
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import com.intellij.openapi.ui.DialogWrapper;
+import com.intellij.util.net.AuthenticationPanel;
 
-import javax.swing.*;
+public class AuthDialog extends DialogWrapper
+{
+	private AuthenticationPanel authPanel;
 
-public class AuthDialog extends DialogWrapper {
-  private AuthenticationPanel authPanel;
+	/**
+	 * If password if prefilled, it is expected to continue remembering it.
+	 * On the other hand, if password saving is disabled, the checkbox is not shown.
+	 * In other cases, {@code rememberByDefault} is used.
+	 */
+	public AuthDialog(@NotNull String title, @Nullable String description, @Nullable String login, @Nullable String password)
+	{
+		super(false);
 
-  /**
-   * If password if prefilled, it is expected to continue remembering it.
-   * On the other hand, if password saving is disabled, the checkbox is not shown.
-   * In other cases, {@code rememberByDefault} is used.
-   */
-  public AuthDialog(@NotNull String title, @Nullable String description, @Nullable String login, @Nullable String password) {
-    super(false);
+		setTitle(title);
+		authPanel = new AuthenticationPanel(description, login, password, null);
+		init();
+	}
 
-    setTitle(title);
-    authPanel = new AuthenticationPanel(description, login, password, null);
-    init();
-  }
+	@Override
+	protected JComponent createCenterPanel()
+	{
+		return authPanel;
+	}
 
-  @Override
-  protected JComponent createCenterPanel() {
-    return authPanel;
-  }
+	@Override
+	public JComponent getPreferredFocusedComponent()
+	{
+		return authPanel.getPreferredFocusedComponent();
+	}
 
-  @Override
-  public JComponent getPreferredFocusedComponent() {
-    return authPanel.getPreferredFocusedComponent();
-  }
+	public String getUsername()
+	{
+		return authPanel.getLogin();
+	}
 
-  public String getUsername() {
-    return authPanel.getLogin();
-  }
-
-  public String getPassword() {
-    return String.valueOf(authPanel.getPassword());
-  }
+	public String getPassword()
+	{
+		return String.valueOf(authPanel.getPassword());
+	}
 }

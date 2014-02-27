@@ -1,12 +1,14 @@
 package org.jetbrains.plugins.ideaConfigurationServer.actions;
 
+import org.jetbrains.plugins.ideaConfigurationServer.IcsSettingsPanel;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.project.DumbAwareAction;
-import org.jetbrains.plugins.ideaConfigurationServer.IcsSettingsPanel;
 
-class ConfigureIcsAction extends DumbAwareAction {
-  @Override
-  public void actionPerformed(AnActionEvent e) {
-    new IcsSettingsPanel().show();
-  }
+class ConfigureIcsAction extends DumbAwareAction
+{
+	@Override
+	public void actionPerformed(AnActionEvent e)
+	{
+		new IcsSettingsPanel().show();
+	}
 }

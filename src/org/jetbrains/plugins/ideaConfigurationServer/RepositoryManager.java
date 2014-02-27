@@ -1,49 +1,50 @@
 package org.jetbrains.plugins.ideaConfigurationServer;
 
-import com.intellij.openapi.progress.ProgressIndicator;
-import com.intellij.openapi.util.ActionCallback;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collection;
 import java.util.List;
 
-public interface RepositoryManager {
-  @Nullable
-  String getRemoteRepositoryUrl();
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.util.ActionCallback;
 
-  void setRemoteRepositoryUrl(@Nullable String url);
+public interface RepositoryManager
+{
+	@Nullable
+	String getRemoteRepositoryUrl();
 
-  @Nullable
-  InputStream read(@NotNull String path) throws IOException;
+	void setRemoteRepositoryUrl(@Nullable String url);
 
-  /**
-   * @param async Write postpone or immediately
-   */
-  void write(@NotNull String path, @NotNull byte[] content, int size, boolean async);
+	@Nullable
+	InputStream read(@NotNull String path) throws IOException;
 
-  void deleteAsync(@NotNull String path);
+	/**
+	 * @param async Write postpone or immediately
+	 */
+	void write(@NotNull String path, @NotNull byte[] content, int size, boolean async);
 
-  @NotNull
-  Collection<String> listSubFileNames(@NotNull String path);
+	void deleteAsync(@NotNull String path);
 
-  void updateRepository();
+	@NotNull
+	Collection<String> listSubFileNames(@NotNull String path);
 
-  @NotNull
-  ActionCallback commit();
+	void updateRepository();
 
-  void commit(@NotNull List<String> paths);
+	@NotNull
+	ActionCallback commit();
 
-  @NotNull
-  ActionCallback push(@NotNull ProgressIndicator indicator);
+	void commit(@NotNull List<String> paths);
 
-  @NotNull
-  ActionCallback pull(@NotNull ProgressIndicator indicator);
+	@NotNull
+	ActionCallback push(@NotNull ProgressIndicator indicator);
 
-  void initRepository(@NotNull File dir) throws IOException;
+	@NotNull
+	ActionCallback pull(@NotNull ProgressIndicator indicator);
 
-  boolean has(String path);
+	void initRepository(@NotNull File dir) throws IOException;
+
+	boolean has(String path);
 }

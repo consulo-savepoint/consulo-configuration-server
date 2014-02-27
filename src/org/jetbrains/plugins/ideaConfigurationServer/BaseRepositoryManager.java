@@ -1,16 +1,5 @@
 package org.jetbrains.plugins.ideaConfigurationServer;
 
-import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.progress.ProgressIndicator;
-import com.intellij.openapi.util.ActionCallback;
-import com.intellij.openapi.util.io.FileUtil;
-import com.intellij.util.Consumer;
-import com.intellij.util.ThrowableConsumer;
-import com.intellij.util.ThrowableRunnable;
-import com.intellij.util.concurrency.QueueProcessor;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -20,135 +9,182 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
-public abstract class BaseRepositoryManager implements RepositoryManager {
-  protected static final Logger LOG = Logger.getInstance(BaseRepositoryManager.class);
+import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
+import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.util.ActionCallback;
+import com.intellij.openapi.util.io.FileUtil;
+import com.intellij.util.Consumer;
+import com.intellij.util.ThrowableConsumer;
+import com.intellij.util.ThrowableRunnable;
+import com.intellij.util.concurrency.QueueProcessor;
 
-  protected final File dir;
+public abstract class BaseRepositoryManager implements RepositoryManager
+{
+	protected static final Logger LOG = Logger.getInstance(BaseRepositoryManager.class);
 
-  protected final QueueProcessor<ThrowableRunnable<Exception>> taskProcessor = new QueueProcessor<ThrowableRunnable<Exception>>(new Consumer<ThrowableRunnable<Exception>>() {
-    @Override
-    public void consume(ThrowableRunnable<Exception> task) {
-      try {
-        task.run();
-      }
-      catch (Throwable e) {
-        try {
-          LOG.error(e);
-        }
-        catch (Throwable e2) {
-          //noinspection CallToPrintStackTrace
-          e2.printStackTrace();
-        }
-      }
-    }
-  });
+	protected final File dir;
 
-  protected BaseRepositoryManager() {
-    dir = new File(IcsManager.getPluginSystemDir(), "repository");
-  }
+	protected final QueueProcessor<ThrowableRunnable<Exception>> taskProcessor = new QueueProcessor<ThrowableRunnable<Exception>>(new
+																																		  Consumer<ThrowableRunnable<Exception>>()
+	{
+		@Override
+		public void consume(ThrowableRunnable<Exception> task)
+		{
+			try
+			{
+				task.run();
+			}
+			catch(Throwable e)
+			{
+				try
+				{
+					LOG.error(e);
+				}
+				catch(Throwable e2)
+				{
+					//noinspection CallToPrintStackTrace
+					e2.printStackTrace();
+				}
+			}
+		}
+	});
 
-  @Override
-  @Nullable
-  public InputStream read(@NotNull String path) throws IOException {
-    File file = new File(dir, path);
-    //noinspection IOResourceOpenedButNotSafelyClosed
-    return file.exists() ? new FileInputStream(file) : null;
-  }
+	protected BaseRepositoryManager()
+	{
+		dir = new File(IcsManager.getPluginSystemDir(), "repository");
+	}
 
-  @Override
-  public void write(@NotNull final String path, @NotNull final byte[] content, final int size, final boolean async) {
-    if (!async) {
-      try {
-        writeToFile(path, content, size);
-      }
-      catch (IOException e) {
-        LOG.error(e);
-      }
-    }
+	@Override
+	@Nullable
+	public InputStream read(@NotNull String path) throws IOException
+	{
+		File file = new File(dir, path);
+		//noinspection IOResourceOpenedButNotSafelyClosed
+		return file.exists() ? new FileInputStream(file) : null;
+	}
 
-    taskProcessor.add(new ThrowableRunnable<Exception>() {
-      @Override
-      public void run() throws Exception {
-        if (async) {
-          writeToFile(path, content, size);
-        }
-        else if (!new File(path).exists()) {
-          return;
-        }
-        doAdd(path);
-      }
-    });
-  }
+	@Override
+	public void write(@NotNull final String path, @NotNull final byte[] content, final int size, final boolean async)
+	{
+		if(!async)
+		{
+			try
+			{
+				writeToFile(path, content, size);
+			}
+			catch(IOException e)
+			{
+				LOG.error(e);
+			}
+		}
 
-  protected abstract void doAdd(String path) throws Exception;
+		taskProcessor.add(new ThrowableRunnable<Exception>()
+		{
+			@Override
+			public void run() throws Exception
+			{
+				if(async)
+				{
+					writeToFile(path, content, size);
+				}
+				else if(!new File(path).exists())
+				{
+					return;
+				}
+				doAdd(path);
+			}
+		});
+	}
 
-  private void writeToFile(String path, byte[] content, int size) throws IOException {
-    FileUtil.writeToFile(new File(dir, path), content, 0, size);
-  }
+	protected abstract void doAdd(String path) throws Exception;
 
-  @NotNull
-  @Override
-  public Collection<String> listSubFileNames(@NotNull String path) {
-    File[] files = new File(dir, path).listFiles();
-    if (files == null || files.length == 0) {
-      return Collections.emptyList();
-    }
+	private void writeToFile(String path, byte[] content, int size) throws IOException
+	{
+		FileUtil.writeToFile(new File(dir, path), content, 0, size);
+	}
 
-    List<String> result = new ArrayList<String>(files.length);
-    for (File file : files) {
-      result.add(file.getName());
-    }
-    return result;
-  }
+	@NotNull
+	@Override
+	public Collection<String> listSubFileNames(@NotNull String path)
+	{
+		File[] files = new File(dir, path).listFiles();
+		if(files == null || files.length == 0)
+		{
+			return Collections.emptyList();
+		}
 
-  @Override
-  public final void deleteAsync(@NotNull final String path) {
-    taskProcessor.add(new ThrowableRunnable<Exception>() {
-      @Override
-      public void run() throws Exception {
-        doDelete(path);
-      }
-    });
-  }
+		List<String> result = new ArrayList<String>(files.length);
+		for(File file : files)
+		{
+			result.add(file.getName());
+		}
+		return result;
+	}
 
-  protected abstract void doDelete(@NotNull String path) throws Exception;
+	@Override
+	public final void deleteAsync(@NotNull final String path)
+	{
+		taskProcessor.add(new ThrowableRunnable<Exception>()
+		{
+			@Override
+			public void run() throws Exception
+			{
+				doDelete(path);
+			}
+		});
+	}
 
-  @Override
-  public final void updateRepository() {
-    taskProcessor.add(new ThrowableRunnable<Exception>() {
-      @Override
-      public void run() throws Exception {
-        if (hasRemoteRepository()) {
-          doUpdateRepository();
-        }
-      }
-    });
-  }
+	protected abstract void doDelete(@NotNull String path) throws Exception;
 
-  protected abstract boolean hasRemoteRepository();
+	@Override
+	public final void updateRepository()
+	{
+		taskProcessor.add(new ThrowableRunnable<Exception>()
+		{
+			@Override
+			public void run() throws Exception
+			{
+				if(hasRemoteRepository())
+				{
+					doUpdateRepository();
+				}
+			}
+		});
+	}
 
-  protected abstract void doUpdateRepository() throws Exception;
+	protected abstract boolean hasRemoteRepository();
 
-  protected final ActionCallback execute(@NotNull final ThrowableConsumer<ProgressIndicator, Exception> task, @NotNull final ProgressIndicator indicator) {
-    final ActionCallback callback = new ActionCallback();
-    taskProcessor.add(new ThrowableRunnable<Exception>() {
-      @Override
-      public void run() throws Exception {
-        try {
-          task.consume(indicator);
-          callback.setDone();
-        }
-        catch (Throwable e) {
-          callback.reject(e.getMessage());
-          LOG.error(e);
-        }
-      }
-    });
-    return callback;
-  }
+	protected abstract void doUpdateRepository() throws Exception;
 
-  @Override
-  public boolean has(String path) {
-    return new File(dir, path).exists();
-  }
+	protected final ActionCallback execute(@NotNull final ThrowableConsumer<ProgressIndicator, Exception> task,
+			@NotNull final ProgressIndicator indicator)
+	{
+		final ActionCallback callback = new ActionCallback();
+		taskProcessor.add(new ThrowableRunnable<Exception>()
+		{
+			@Override
+			public void run() throws Exception
+			{
+				try
+				{
+					task.consume(indicator);
+					callback.setDone();
+				}
+				catch(Throwable e)
+				{
+					callback.reject(e.getMessage());
+					LOG.error(e);
+				}
+			}
+		});
+		return callback;
+	}
+
+	@Override
+	public boolean has(String path)
+	{
+		return new File(dir, path).exists();
+	}
 }
