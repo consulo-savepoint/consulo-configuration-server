@@ -130,7 +130,7 @@ public class IcsManager implements ApplicationLoadListener, Disposable
 			}
 
 			@Override
-			public void deleteFile(@NotNull String fileSpec, @NotNull RoamingType roamingType)
+			public void delete(@NotNull String fileSpec, @NotNull RoamingType roamingType)
 			{
 				myRepositoryManager.deleteAsync(IcsUrlBuilder.buildPath(fileSpec, roamingType, null));
 				commitAlarm.cancelAndRequest();
@@ -151,7 +151,7 @@ public class IcsManager implements ApplicationLoadListener, Disposable
 	{
 		StateStorageManager storageManager = ((ProjectEx) project).getStateStore().getStateStorageManager();
 
-		StateStorage workspaceFileStorage = storageManager.getFileStateStorage(StoragePathMacros.WORKSPACE_FILE);
+		StateStorage workspaceFileStorage = storageManager.getStateStorage(StoragePathMacros.WORKSPACE_FILE, RoamingType.PER_USER);
 		LOG.assertTrue(workspaceFileStorage != null);
 		ProjectId projectId = workspaceFileStorage.getState(new ProjectId(), "IcsProjectId", ProjectId.class, null);
 		if(projectId == null || projectId.uid == null)
@@ -283,7 +283,7 @@ public class IcsManager implements ApplicationLoadListener, Disposable
 		}
 
 		@Override
-		public final boolean saveContent(@NotNull String fileSpec, @NotNull byte[] content, int size, @NotNull RoamingType roamingType,
+		public final void saveContent(@NotNull String fileSpec, @NotNull byte[] content, int size, @NotNull RoamingType roamingType,
 				boolean async)
 		{
 			myRepositoryManager.write(IcsUrlBuilder.buildPath(fileSpec, roamingType, projectId), content, size, async);
@@ -291,7 +291,6 @@ public class IcsManager implements ApplicationLoadListener, Disposable
 			{
 				commitAlarm.cancelAndRequest();
 			}
-			return false;
 		}
 
 		protected boolean isAutoCommit(String fileSpec, RoamingType roamingType)
@@ -307,14 +306,15 @@ public class IcsManager implements ApplicationLoadListener, Disposable
 		}
 
 		@Override
-		public boolean isEnabled()
+		public void delete(@NotNull String fileSpec, @NotNull RoamingType roamingType)
 		{
-			return myStatus == IcsStatus.OPENED;
+
 		}
 
 		@Override
-		public void deleteFile(@NotNull final String fileSpec, @NotNull final RoamingType roamingType)
+		public boolean isEnabled()
 		{
+			return myStatus == IcsStatus.OPENED;
 		}
 	}
 
